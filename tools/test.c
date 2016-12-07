@@ -24,8 +24,8 @@ void fill_dummy_image(FLIF_IMAGE* image)
             for(x = 0; x < w; ++x)
             {
                 row[x].r = (x+y) % 255;
-                row[x].g = (x+y) % 255;
-                row[x].b = (x+y) % 255;
+                row[x].g = (x) % 255;
+                row[x].b = (y) % 255;
                 row[x].a = 255;
             }
             flif_image_write_row_RGBA8(image, y, row, w * sizeof(RGBA));
@@ -82,7 +82,7 @@ int compare_images(FLIF_IMAGE* image1, FLIF_IMAGE* image2)
                         row1[x].a != row2[x].a)
                     {
                         // stop flooding the log if the image has many differences
-                        if(difference < 100)
+                        if(difference < 20)
                         {
                             printf("Error: Color difference at %u,%u: %02X%02X%02X%02X -> %02X%02X%02X%02X\n", x, y, row1[x].r, row1[x].g, row1[x].b, row1[x].a, row2[x].r, row2[x].g, row2[x].b, row2[x].a);
                             result = 1;
@@ -145,13 +145,19 @@ int compare_file_and_blob(const void* blob, size_t blob_size, const char* filena
     return result;
 }
 
-int main()
+int main(int argc, char** argv)
 {
+    if (argc < 2)
+    {
+        printf("first argument must be a file path for the test image");
+        return 1;
+    }
+
     int result = 0;
 
     const size_t WIDTH = 256;
     const size_t HEIGHT = 256;
-    const char* dummy_file = "../tmp-test/dummy.flif";
+    const char* dummy_file = argv[1];
 
     FLIF_IMAGE* im = flif_create_image(WIDTH, HEIGHT);
     if(im == 0)
@@ -181,7 +187,19 @@ int main()
                 printf("Error: encoding file failed\n");
                 result = 1;
             }
+            flif_destroy_encoder(e);
+            e = 0;
+        }
+        e = flif_create_encoder();
+        if(e)
+        {
+            flif_encoder_set_interlaced(e, 1);
+            flif_encoder_set_learn_repeat(e, 3);
+            flif_encoder_set_auto_color_buckets(e, 1);
+            flif_encoder_set_palette_size(e, 512);
+            flif_encoder_set_lookback(e, 1);
 
+            flif_encoder_add_image(e, im);
             if(!flif_encoder_encode_memory(e, &blob, &blob_size))
             {
                 printf("Error: encoding blob failed\n");
@@ -246,6 +264,37 @@ int main()
             d = 0;
         }
 
+        FLIF_INFO* info = flif_read_info_from_memory(blob, blob_size);
+        if(info)
+        {
+            int w = flif_info_get_width(info);
+            int h = flif_info_get_height(info);
+            int channels = flif_info_get_nb_channels(info);
+            int depth = flif_info_get_depth(info);
+            int n = flif_info_num_images(info);
+
+            if(w != WIDTH ||
+               h != HEIGHT ||
+               channels != 4 ||
+               depth != 8 ||
+               n != 1)
+            {
+                printf("Error: info should be %dx%d, %d channels, %d bit, %d images.\n"
+                       "       Instead it is %dx%d, %d channels, %d bit, %d images.\n",
+                       WIDTH, HEIGHT, 4, 8, 1,
+                       w, h, channels, depth, n);
+                result = 1;
+            }
+
+            flif_destroy_info(info);
+            info = 0;
+        }
+        else
+        {
+            printf("Error: flif_read_info_from_memory failed\n");
+            result = 1;
+        }
+
         flif_destroy_image(im);
         im = 0;
 
@@ -256,7 +305,8 @@ int main()
         }
     }
 
-    printf("interface test has succeeded.\n");
+    if (result) printf("interface test has FAILED.\n");
+    else printf("interface test has succeeded.\n");
 
     return result;
 }

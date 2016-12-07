@@ -11,6 +11,7 @@ PLATFORM=x86
 Rt = MD
 LibDir = $(PLATFORM)_$(Rt)
 SrcDir = ..\..\src
+ExtDir = ..\..\extern
 
 !if "$(Rt)" == "MT" || "$(Rt)" == "MD"
 CFLAGS = /nologo /WX /EHsc /GL /Ox /Oy /Gy /DNDEBUG /$(Rt)
@@ -25,7 +26,7 @@ LDFLAGS= /nologo /DEBUG
 OBJDIR = $(LibDir)\Obj
 O = $(OBJDIR)\\
 
-OBJ1 = $Oflif-dec.obj $Oflif-enc.obj $Oio.obj $Ocommon.obj $Ocolor_range.obj $Ocrc32k.obj $Obit.obj $Ochance.obj $Ofactory.obj
+OBJ1 = $Oflif-dec.obj $Oflif-enc.obj $Oio.obj $Ocommon.obj $Ocolor_range.obj $Ocrc32k.obj $Obit.obj $Ochance.obj $Ofactory.obj $Oimage-metadata.obj $Olodepng.obj
 OBJ2 = $Oimage.obj $Oimage-pam.obj $Oimage-png.obj $Oimage-pnm.obj $Oimage-rggb.obj
 LIBOBJS  = $(OBJ1)
 FLIFOBJS = $(OBJ1) $(OBJ2)
@@ -46,7 +47,7 @@ libflif_dec.dll: $(OBJDIR) $(LIBOBJS)
 	copy "$(LibDir)\$@" $@
 
 viewflif.exe: libflif_dec.dll
-	cl $(CFLAGS) /I$(SrcDir)\ /I$(SrcDir)\library\ /I$(sdl2dir)\include /Tp $(SrcDir)\viewflif.c /FI..\build\MSVC\$(Incdir)\sdl2v140.h /DFLIF_USE_DLL /Fd$O /Fo$O -c
+	cl $(CFLAGS) /I$(SrcDir)\ /I$(SrcDir)\library\ /I$(sdl2dir)\include /Tp $(SrcDir)\viewflif.c /DFLIF_USE_DLL /Fd$O /Fo$O -c
 	link /out:$(LibDir)\$@ $Oviewflif.obj libflif_dec.lib SDL2.lib SDL2main.lib $(LDFLAGS) /SUBSYSTEM:CONSOLE /LIBPATH:$(LibDir) /LIBPATH:$(sdl2dir)\lib\$(PLATFORM)\ 
 	copy "$(LibDir)\$@" $@
 	copy $(sdl2dir)\lib\$(PLATFORM)\SDL2.dll SDL2.dll
@@ -59,7 +60,7 @@ test: flif.exe test-interface.exe
 	flif output.flif output.png
 	@if exist "viewflif.exe" viewflif.exe output.flif
 	@if not exist "..\tmp-test\" mkdir ..\tmp-test
-	if exist "test-interface.exe" test-interface.exe
+	if exist "test-interface.exe" test-interface.exe ..\tmp-test\dummy.flif
 	start output.png
 
 test-interface.exe: libflif.dll
@@ -71,6 +72,7 @@ $(OBJDIR):
 	@if not exist "$(@)/" mkdir "$(@)"
 
 $(LibDir)\zlib.lib: $(OBJDIR)
+	@if not exist include mkdir include
 	cd $(zlibdir)
 	@nmake -f win32\Makefile.msc clean
 	nmake -f win32\Makefile.msc zlib.lib CFLAGS="$(CFLAGS) /TC /Fdzlib" ARFLAGS="$(LDFLAGS)"
@@ -80,6 +82,7 @@ $(LibDir)\zlib.lib: $(OBJDIR)
 	cd ..
 
 $(LibDir)\libpng.lib: $(LibDir)\zlib.lib
+	@if not exist include mkdir include
 	cd $(lpngdir)
 	@nmake -f scripts\Makefile.vcwin32 clean
 	nmake -f scripts\Makefile.vcwin32 libpng.lib CPPFLAGS="/I..\$(Incdir) " CFLAGS="$(CFLAGS) /TC /D_CRT_SECURE_NO_DEPRECATE /D_CRT_SECURE_NO_WARNINGS" ARFLAGS="$(LDFLAGS)"
@@ -98,6 +101,8 @@ $(LibDir)\libpng.lib: $(LibDir)\zlib.lib
 {$(SrcDir)\maniac\}.cpp{$(O)}.obj:
 	cl $(CFLAGS) /Fd$O /Fo$O -c $<
 {$(SrcDir)\transform\}.cpp{$(O)}.obj:
+	cl $(CFLAGS) /Fd$O /Fo$O -c $<
+{$(ExtDir)\}.cpp{$(O)}.obj:
 	cl $(CFLAGS) /Fd$O /Fo$O -c $<
 
 all: flif.exe libflif_dec.dll viewflif.exe test-interface.exe
