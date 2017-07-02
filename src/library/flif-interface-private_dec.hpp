@@ -18,6 +18,8 @@ limitations under the License.
 
 #pragma once
 
+#include <stdio.h>
+
 #include "flif-interface-private_common.hpp"
 #include "../flif-dec.hpp"
 
@@ -26,6 +28,7 @@ struct FLIF_DECODER
     FLIF_DECODER();
 
     int32_t decode_file(const char* filename);
+    int32_t decode_filepointer(FILE *file, const char* filename);
     int32_t decode_memory(const void* buffer, size_t buffer_size_bytes);
     int32_t abort();
     size_t num_images();
@@ -34,7 +37,13 @@ struct FLIF_DECODER
 
     flif_options options;
     void* callback;
+    void* user_data;
     int32_t first_quality;
+    ~FLIF_DECODER() {
+        // get rid of palettes
+        if (internal_images.size()) internal_images[0].clear();
+        if (images.size()) images[0].clear();
+    }
 
 private:
     Images internal_images;

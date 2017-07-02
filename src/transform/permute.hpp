@@ -84,6 +84,7 @@ public:
         subtract = setting;
     }
     bool process(const ColorRanges *srcRanges, const Images &images) override {
+        if (images[0].palette) return false; // skip if the image is already a palette image
         const int perm[5] = {1,0,2,3,4}; // just always transform RGB to GRB, we can do something more complicated later
         for (int p=0; p<srcRanges->numPlanes(); p++) {
             permutation[p] = perm[p];
@@ -133,12 +134,16 @@ public:
         return true;
     }
 #define CLAMP(x,l,u) (x>u?u:(x<l?l:x))
-    void invData(Images& images) const override {
+    void invData(Images& images, uint32_t strideCol, uint32_t strideRow) const override {
         ColorVal pixel[5];
         for (Image& image : images) {
+
+          const uint32_t scaledRows = image.scaledRows();
+          const uint32_t scaledCols = image.scaledCols();
+
           for (int p=0; p<ranges->numPlanes(); p++) image.undo_make_constant_plane(p);
-          for (uint32_t r=0; r<image.rows(); r++) {
-            for (uint32_t c=0; c<image.cols(); c++) {
+          for (uint32_t r=0; r<scaledRows; r+=strideRow) {
+            for (uint32_t c=0; c<scaledCols; c+=strideCol) {
                 for (int p=0; p<ranges->numPlanes(); p++) pixel[p] = image(p,r,c);
                 for (int p=0; p<ranges->numPlanes(); p++) image.set(permutation[p],r,c, pixel[p]);
                 image.set(permutation[0],r,c, pixel[0]);
