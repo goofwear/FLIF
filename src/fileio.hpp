@@ -49,7 +49,7 @@ public:
     long ftell() {
       return ::ftell(file);
     }
-    int getc() {
+    int get_c() {
       return fgetc(file);
     }
     char * gets(char *buf, int n) {
@@ -94,7 +94,7 @@ public:
     long ftell() const {
         return seek_pos;
     }
-    int getc() {
+    int get_c() {
         if(seek_pos >= data_array_size)
             return EOS;
         return data[seek_pos++];
@@ -111,7 +111,7 @@ public:
         else
             return buf;
     }
-    int fputc(int c) {
+    int fputc(int FLIF_UNUSED(c)) {
       // cannot write on const memory
       return EOS;
     }
@@ -205,7 +205,7 @@ public:
     int ftell() const {
         return seek_pos;
     }
-    int getc() {
+    int get_c() {
         if(seek_pos >= bytes_used)
             return EOS;
         return data[seek_pos++];

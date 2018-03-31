@@ -167,7 +167,7 @@ void downsample(const int width, const int height, int target_w, int target_h, I
 
 
 template<typename IO, typename Rac, typename Coder>
-bool flif_decode_scanlines_inner(IO &io, Rac &rac, std::vector<Coder> &coders, Images &images, const ColorRanges *ranges, flif_options &options,
+bool flif_decode_scanlines_inner(IO &io, FLIF_UNUSED(Rac &rac), std::vector<Coder> &coders, Images &images, const ColorRanges *ranges, flif_options &options,
                                  std::vector<Transform<IO>*> &transforms, callback_t callback, void *user_data, Images &partial_images) {
     const int nump = images[0].numPlanes();
     const bool alphazero = images[0].alpha_zero_special;
@@ -349,7 +349,7 @@ void flif_decode_FLIF2_inner_interpol(Images &images, const ColorRanges *ranges,
           uint32_t cols = image.cols(z);
           for (uint32_t r = 0; r < rows; r++) {
             for (uint32_t c = 1; c < cols; c += 2) {
-              plane.set(z,r,c, predict_plane_vertical(plane,z,p,r,c,rows,0));
+              plane.set(z,r,c, predict_plane_vertical(plane,z,p,r,c,cols,0));
             }
           }
         }
@@ -609,8 +609,8 @@ struct vertical_plane_decoder: public PlaneVisitor {
 };
 
 template<typename IO, typename Rac, typename Coder, typename alpha_t, typename ranges_t>
-bool flif_decode_FLIF2_inner_horizontal(const int p, IO& io, Rac &rac, std::vector<Coder> &coders, Images &images, const ranges_t *ranges,
-                             const int beginZL, const int endZL, int quality, int scale, const int i, const int z, const int predictor, std::vector<int>& zoomlevels, std::vector<Transform<IO>*> &transforms, const int invisible_predictor) {
+bool flif_decode_FLIF2_inner_horizontal(const int p, IO& io, FLIF_UNUSED(Rac &rac), std::vector<Coder> &coders, Images &images, const ranges_t *ranges,
+                             const int beginZL, const int endZL, FLIF_UNUSED(int quality), int scale, const int i, const int z, const int predictor, std::vector<int>& zoomlevels, std::vector<Transform<IO>*> &transforms, const int invisible_predictor) {
     const int nump = images[0].numPlanes();
     const bool alphazero = images[0].alpha_zero_special;
     const bool FRA = (nump == 5);
@@ -640,8 +640,8 @@ bool flif_decode_FLIF2_inner_horizontal(const int p, IO& io, Rac &rac, std::vect
           return true;
 }
 template<typename IO, typename Rac, typename Coder, typename alpha_t, typename ranges_t>
-bool flif_decode_FLIF2_inner_vertical(const int p, IO& io, Rac &rac, std::vector<Coder> &coders, Images &images, const ranges_t *ranges,
-                             const int beginZL, const int endZL, int quality, int scale, const int i, const int z, const int predictor, std::vector<int>& zoomlevels, std::vector<Transform<IO>*> &transforms, const int invisible_predictor) {
+bool flif_decode_FLIF2_inner_vertical(const int p, IO& io, FLIF_UNUSED(Rac &rac), std::vector<Coder> &coders, Images &images, const ranges_t *ranges,
+                             const int beginZL, const int endZL, FLIF_UNUSED(int quality), int scale, const int i, const int z, const int predictor, std::vector<int>& zoomlevels, std::vector<Transform<IO>*> &transforms, const int invisible_predictor) {
     const int nump = images[0].numPlanes();
     const bool alphazero = images[0].alpha_zero_special;
     const bool FRA = (nump == 5);
@@ -855,7 +855,7 @@ bool flif_decode_FLIF2_pass(IO &io, Rac &rac, Images &images, const ColorRanges 
 
 
 
-template<typename IO, typename BitChance, typename Rac> bool flif_decode_tree(IO& io, Rac &rac, const ColorRanges *ranges, std::vector<Tree> &forest, const flifEncoding encoding)
+template<typename IO, typename BitChance, typename Rac> bool flif_decode_tree(FLIF_UNUSED(IO& io), Rac &rac, const ColorRanges *ranges, std::vector<Tree> &forest, const flifEncoding encoding)
 {
     try {
       for (int p = 0; p < ranges->numPlanes(); p++) {
@@ -925,7 +925,7 @@ size_t read_big_endian_varint(IO& io) {
     size_t result = 0;
     int bytes_read = 0;
     while (bytes_read++ < 10) {
-      int number = io.getc();
+      int number = io.get_c();
       if (number < 0) break;
       if (number < 128) return result+number;
       number -= 128;
@@ -938,7 +938,7 @@ size_t read_big_endian_varint(IO& io) {
 
 template <typename IO>
 int read_chunk(IO& io, MetaData& metadata) {
-    metadata.name[0] = io.getc();
+    metadata.name[0] = io.get_c();
 //    printf("chunk: %s\n", metadata.name);
     if (metadata.name[0] < 32) {
       if (metadata.name[0] > 0) {
@@ -958,7 +958,7 @@ int read_chunk(IO& io, MetaData& metadata) {
 //    printf("chunk length: %lu\n", metadata.length);
     metadata.contents.resize(metadata.length);
     for(size_t i = 0; i < metadata.length; i++) {
-        metadata.contents[i] = io.getc();
+        metadata.contents[i] = io.get_c();
     }
     return 0; // read next chunk
 }
@@ -1036,6 +1036,10 @@ bool flif_decode(IO& io, Images &images, callback_t callback, void *user_data, i
     if (width < 1 || height < 1) {e_printf("Invalid FLIF header\n"); return false;}
 
     if (numFrames > 1) numFrames = read_big_endian_varint(io)+2;
+    if (numFrames < 0) {
+        e_printf("Unsensical number of frames < 0.\n");
+        return false;
+    }
 #ifndef SUPPORT_ANIMATION
     if (numFrames > 1) {
         e_printf("This FLIF cannot decode animations. Please compile with SUPPORT_ANIMATION.\n");
@@ -1353,7 +1357,7 @@ bool flif_decode(IO& io, Images &images, callback_t callback, void *user_data, i
           transform_ptrs.back()->invData(palette);
           transform_ptrs.pop_back();
         }
-        Image *p_image = new Image(palette[0].clone());
+        std::shared_ptr<Image> p_image = std::make_shared<Image>(palette[0].clone());
         for (Image& i : images) i.palette_image = p_image;
       }
     }

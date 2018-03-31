@@ -184,7 +184,7 @@ public:
     virtual void set(const int z, const size_t r, const size_t c, const ColorVal x) =0;
     virtual ColorVal get(const int z, const size_t r, const size_t c) const =0;
     virtual void normalize_scale() {}
-    virtual void accept_visitor(PlaneVisitor &v) =0;
+    virtual void accept_visitor(FLIF_UNUSED(PlaneVisitor &v)) =0;
     virtual uint32_t compute_crc32(uint32_t previous_crc32) =0;
     // access pixel by zoomlevel coordinate
     static size_t zoom_rowpixelsize(int zoomlevel) {
@@ -211,7 +211,7 @@ struct PlaneVisitor {
     virtual ~PlaneVisitor() {}
 };
 
-#define SCALED(x) (((x-1)>>scale)+1)
+#define SCALED(x) ((x)==0?0:((((x)-1)>>scale)+1))
 #ifdef USE_SIMD
 // pad to a multiple of 8, leaving room for alignment
 #define PAD(x) ((x) + 16)
@@ -333,7 +333,7 @@ public:
 
     int bytes_per_pixel() const override { return sizeof(pixel_t); }
 
-    void accept_visitor(PlaneVisitor &v) override {
+    void accept_visitor(FLIF_UNUSED(PlaneVisitor &v)) override {
         v.visit(*this);
     }
     uint32_t compute_crc32(uint32_t previous_crc32) override {
@@ -362,34 +362,34 @@ class ConstantPlane final : public GeneralPlane {
     ColorVal color;
 public:
     explicit ConstantPlane(ColorVal c) : color(c) {}
-    void set(const size_t r, const size_t c, const ColorVal x) override {
+    void set(FLIF_UNUSED(const size_t r), FLIF_UNUSED(const size_t c), FLIF_UNUSED(const ColorVal x)) override {
         assert(x == color);
     }
-    ColorVal get(const size_t r, const size_t c) const override {
+    ColorVal get(FLIF_UNUSED(const size_t r), FLIF_UNUSED(const size_t c)) const override {
         return color;
     }
 
-    void prepare_zoomlevel(const int z) const override {}
-    ColorVal get_fast(size_t r, size_t c) const override { return color; }
-    void set_fast(size_t r, size_t c, ColorVal x) override { assert(x == color); }
+    void prepare_zoomlevel(FLIF_UNUSED(const int z)) const override {}
+    ColorVal get_fast(FLIF_UNUSED(size_t r), FLIF_UNUSED(size_t c)) const override { return color; }
+    void set_fast(FLIF_UNUSED(size_t r), FLIF_UNUSED(size_t c), FLIF_UNUSED(ColorVal x)) override { assert(x == color); }
 
 #ifdef USE_SIMD
-    FourColorVals get4(const size_t pos) const ATTRIBUTE_HOT {
+    FourColorVals get4(FLIF_UNUSED(const size_t pos)) const ATTRIBUTE_HOT {
         FourColorVals x {color,color,color,color};
         return x;
     }
-    void VCALL set4(const size_t pos, const FourColorVals x) override {
+    void VCALL set4(FLIF_UNUSED(const size_t pos), const FourColorVals x) override {
         assert(x[0] == color);
         assert(x[1] == color);
         assert(x[2] == color);
         assert(x[3] == color);
     }
-    EightColorVals get8(const size_t pos) const ATTRIBUTE_HOT {
+    EightColorVals get8(FLIF_UNUSED(const size_t pos)) const ATTRIBUTE_HOT {
         int16_t c = color;
         EightColorVals x {c,c,c,c,c,c,c,c};
         return x;
     }
-    void VCALL set8(const size_t pos, const EightColorVals x) override {
+    void VCALL set8(FLIF_UNUSED(const size_t pos), const EightColorVals x) override {
         assert(x[0] == color);
         assert(x[1] == color);
         assert(x[2] == color);
@@ -402,15 +402,15 @@ public:
 #endif
     bool is_constant() const override { return true; }
 
-    void set(const int z, const size_t r, const size_t c, const ColorVal x) override {
+    void set(FLIF_UNUSED(const int z), FLIF_UNUSED(const size_t r), FLIF_UNUSED(const size_t c), FLIF_UNUSED(const ColorVal x)) override {
         assert(x == color);
     }
-    ColorVal get(const int z, const size_t r, const size_t c) const override {
+    ColorVal get(FLIF_UNUSED(const int z), FLIF_UNUSED(const size_t r), FLIF_UNUSED(const size_t c)) const override {
         return color;
     }
 
 
-    void accept_visitor(PlaneVisitor &v) override {
+    void accept_visitor(FLIF_UNUSED(PlaneVisitor &v)) override {
 //        v.visit(*this);
         assert(false); // there should never be a need to visit a constant plane
     }
@@ -444,8 +444,6 @@ struct metadata_options {
     bool xmp;
 };
 
-class Image;
-
 class Image {
     std::unique_ptr<GeneralPlane> planes[5]; // Red/Y, Green/Co, Blue/Cg, Alpha, Frame-Lookback(animation only)
     size_t width, height;
@@ -477,8 +475,8 @@ class Image {
       metadata = other.metadata;
       clear();
       palette = other.palette;
-      if (other.palette_image) palette_image = new Image(*other.palette_image);
-      else palette_image = NULL;
+      // TODO: do we share the palette or clone it?
+      palette_image = other.palette_image;
       alpha_zero_special = other.alpha_zero_special;
       frame_delay = other.frame_delay;
       col_begin = other.col_begin;
@@ -514,7 +512,7 @@ class Image {
 
 public:
     bool palette;
-    Image * palette_image = NULL;
+    std::shared_ptr<Image> palette_image;
     int frame_delay;
     bool alpha_zero_special = true;
     std::vector<uint32_t> col_begin;
@@ -537,7 +535,6 @@ public:
       depth = 0;
 #endif
       palette = false;
-      palette_image = NULL;
       seen_before = 0;
     }
 
@@ -560,7 +557,7 @@ public:
       depth = other.depth;
       other.depth = 0;
 #endif
-      metadata = other.metadata;
+      metadata = std::move(other.metadata);
 
       other.width = other.height = 0;
       other.minval = other.maxval = 0;
@@ -569,8 +566,7 @@ public:
       other.fully_decoded = false;
 
       palette = other.palette;
-      palette_image = other.palette_image;
-      other.palette_image = NULL;
+      palette_image = std::move(other.palette_image);
       alpha_zero_special = other.alpha_zero_special;
       col_begin = std::move(other.col_begin);
       col_end = std::move(other.col_end);
@@ -596,11 +592,15 @@ public:
       depth = other.depth;
 #endif
       palette = other.palette;
+      // TODO: do we share the palette or clone it?
       palette_image = other.palette_image;
       alpha_zero_special = other.alpha_zero_special;
       frame_delay = other.frame_delay;
-//      col_begin = other.col_begin;  // not needed and meaningless after downsampling
-//      col_end = other.col_end;
+      // assume downsample is always able to allocate enough space
+      col_begin.clear();
+      col_begin.resize(height,0);
+      col_end.clear();
+      col_end.resize(height,width);
       seen_before = other.seen_before;
       fully_decoded = other.fully_decoded;
       clear();
@@ -641,6 +641,7 @@ public:
       depth = other.depth;
 #endif
       palette = other.palette;
+      // TODO: do we share the palette or clone it?
       palette_image = other.palette_image;
       alpha_zero_special = other.alpha_zero_special;
       frame_delay = other.frame_delay;
@@ -699,7 +700,7 @@ public:
 #endif
       frame_delay=0;
       palette=false;
-      palette_image = NULL;
+      palette_image.reset();
       alpha_zero_special=true;
       assert(min == 0);
       assert(max < (1<<depth));
@@ -770,11 +771,7 @@ public:
 
     void clear() {
         for (int p=0; p<5; p++) planes[p].reset(nullptr);
-        if (palette_image) {
-//            printf("Deleting palette image\n");
-            delete palette_image;
-        }
-        palette_image = NULL;
+        palette_image.reset();
     }
     void reset() {
         clear();
@@ -864,9 +861,11 @@ public:
         switch(num) {
             case 1:
               make_constant_plane(1,0);
+              // fall through
             case 2:
               make_constant_plane(2,0);
               num=3;
+              // fall through
             default:
               assert(num>=3);
         }
@@ -877,6 +876,7 @@ public:
             case 3:
               make_constant_plane(3,1);
               num=4;
+              // fall through
             default:
               assert(num>=4);
         }
@@ -924,9 +924,11 @@ public:
     }
 
     size_t rows(int zoomlevel) const {
+        if (rows() <= 0) return 0;
         return 1+(rows()-1)/zoom_rowpixelsize(zoomlevel);
     }
     size_t cols(int zoomlevel) const {
+        if (cols() <= 0) return 0;
         return 1+(cols()-1)/zoom_colpixelsize(zoomlevel);
     }
     int zooms() const {
